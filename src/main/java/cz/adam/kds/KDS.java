@@ -9,8 +9,7 @@ import com.sun.net.httpserver.HttpServer;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
+import java.awt.event.*;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -22,6 +21,7 @@ public class KDS {
     private static final Gson gson = new Gson();
     private static JPanel ordersPanel;
     private static JFrame frame;
+    private static boolean isFullscreen = false;
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(KDS::createAndShowGUI);
@@ -33,10 +33,38 @@ public class KDS {
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setExtendedState(JFrame.MAXIMIZED_BOTH);
 
-        ordersPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 10));
+        ordersPanel = new JPanel();
+        ordersPanel.setLayout(new FlowLayout(FlowLayout.LEFT, 10, 10));
         JScrollPane scrollPane = new JScrollPane(ordersPanel);
 
-        frame.add(scrollPane);
+        JButton clearButton = new JButton("Clear All");
+        clearButton.addActionListener(e -> {
+            orders.clear();
+            updateOrdersDisplay();
+        });
+
+        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        bottomPanel.add(clearButton);
+
+        frame.add(scrollPane, BorderLayout.CENTER);
+        frame.add(bottomPanel, BorderLayout.SOUTH);
+        frame.setVisible(true);
+
+        frame.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_F11) {
+                    toggleFullscreen();
+                }
+            }
+        });
+    }
+
+    private static void toggleFullscreen() {
+        isFullscreen = !isFullscreen;
+        frame.dispose();
+        frame.setUndecorated(isFullscreen);
+        frame.setExtendedState(isFullscreen ? JFrame.MAXIMIZED_BOTH : JFrame.NORMAL);
         frame.setVisible(true);
     }
 
@@ -71,12 +99,18 @@ public class KDS {
     private static void updateOrdersDisplay() {
         SwingUtilities.invokeLater(() -> {
             ordersPanel.removeAll();
+            int maxWidth = frame.getWidth() - 50;
+            int currentWidth = 0;
+            JPanel rowPanel = new JPanel();
+            rowPanel.setLayout(new FlowLayout(FlowLayout.LEFT, 10, 10));
+            ordersPanel.setLayout(new BoxLayout(ordersPanel, BoxLayout.Y_AXIS));
+
             for (Order order : orders) {
                 JPanel orderPanel = new JPanel();
                 orderPanel.setLayout(new BoxLayout(orderPanel, BoxLayout.Y_AXIS));
                 orderPanel.setBorder(BorderFactory.createLineBorder(Color.BLACK, 2));
                 orderPanel.setBackground(Color.LIGHT_GRAY);
-                orderPanel.setPreferredSize(new Dimension(200, 150));
+                orderPanel.setPreferredSize(new Dimension(200, order.items.size() * 25 + 50));
 
                 StringBuilder orderText = new StringBuilder("<html><b>" + order.location + "</b><br>");
                 for (Item item : order.items) {
@@ -102,8 +136,16 @@ public class KDS {
                     }
                 });
 
-                ordersPanel.add(orderPanel);
+                if (currentWidth + 220 > maxWidth) {
+                    ordersPanel.add(rowPanel);
+                    rowPanel = new JPanel();
+                    rowPanel.setLayout(new FlowLayout(FlowLayout.LEFT, 10, 10));
+                    currentWidth = 0;
+                }
+                rowPanel.add(orderPanel);
+                currentWidth += 220;
             }
+            ordersPanel.add(rowPanel);
             ordersPanel.revalidate();
             ordersPanel.repaint();
         });
