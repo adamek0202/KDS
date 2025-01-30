@@ -6,55 +6,41 @@ import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
-import javafx.application.Application;
-import javafx.scene.Scene;
-import javafx.scene.control.Label;
-import javafx.scene.input.KeyCode;
-import javafx.scene.input.MouseButton;
-import javafx.scene.layout.StackPane;
-import javafx.scene.layout.VBox;
-import javafx.scene.paint.Color;
-import javafx.scene.text.Font;
-import javafx.stage.Stage;
 
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Executors;
 
-
-/**
- * JavaFX KDS
- */
-public class KDS extends Application {
-    private VBox ordersBox = new VBox(10);
-    private List<Order> orders = new ArrayList<>();
-    private Gson gson = new Gson();
+public class KDS {
+    private static final List<Order> orders = new ArrayList<>();
+    private static final Gson gson = new Gson();
+    private static JPanel ordersPanel;
+    private static JFrame frame;
 
     public static void main(String[] args) {
+        SwingUtilities.invokeLater(KDS::createAndShowGUI);
         new Thread(KDS::startServer).start();
-        launch(args);
     }
 
-    @Override
-    public void start(Stage primaryStage) {
-        ordersBox.setStyle("-fx-background-color: black;");
-        updateOrdersDisplay();
+    private static void createAndShowGUI() {
+        frame = new JFrame("KDS - Kitchen Display System");
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setExtendedState(JFrame.MAXIMIZED_BOTH);
 
-        StackPane root = new StackPane(ordersBox);
-        Scene scene = new Scene(root, 800, 600);
-        ordersBox.prefWidthProperty().bind(scene.widthProperty());
-        ordersBox.prefHeightProperty().bind(scene.heightProperty());
+        ordersPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 10));
+        JScrollPane scrollPane = new JScrollPane(ordersPanel);
 
-        primaryStage.setTitle("KDS - Kitchen Display System");
-        primaryStage.setScene(scene);
-        primaryStage.setFullScreen(true);
-        primaryStage.show();
+        frame.add(scrollPane);
+        frame.setVisible(true);
     }
 
-    private void loadOrdersFromJson(String jsonData) {
-        orders.clear();
+    private static void loadOrdersFromJson(String jsonData) {
         JsonObject jsonObject = gson.fromJson(jsonData, JsonObject.class);
         JsonArray itemsArray = jsonObject.getAsJsonArray("items");
         List<Item> items = new ArrayList<>();
@@ -63,67 +49,73 @@ public class KDS extends Application {
             JsonObject itemObject = itemElement.getAsJsonObject();
             String type = itemObject.get("type").getAsString();
             String name = itemObject.get("name").getAsString();
+            List<Item> components = new ArrayList<>();
 
             if ("composite".equals(type) && itemObject.has("components")) {
                 JsonArray componentsArray = itemObject.getAsJsonArray("components");
-                List<Component> components = new ArrayList<>();
-                for (var componentElement : componentsArray) {
-                    JsonObject componentObject = componentElement.getAsJsonObject();
-                    int count = componentObject.get("count").getAsInt();
-                    String componentName = componentObject.get("name").getAsString();
-                    components.add(new Component(count, componentName));
+                for (var compElement : componentsArray) {
+                    JsonObject compObject = compElement.getAsJsonObject();
+                    int count = compObject.get("count").getAsInt();
+                    String compName = compObject.get("name").getAsString();
+                    components.add(new Item(compName, count, null));
                 }
-                items.add(new CompositeItem(name, components));
-            } else {
-                items.add(new NormalItem(name));
             }
+
+            items.add(new Item(name, 1, components));
         }
+
         orders.add(new Order(jsonObject.get("location").getAsString(), items));
         updateOrdersDisplay();
     }
 
-    private void updateOrdersDisplay() {
-        ordersBox.getChildren().clear();
-        for (Order order : orders) {
-            VBox orderBox = new VBox();
-            orderBox.setStyle("-fx-border-color: white; -fx-padding: 20; -fx-background-color: gray;");
-            StringBuilder orderText = new StringBuilder(order.location + "\n");
-            for (Item item : order.items) {
-                if (item instanceof CompositeItem) {
-                    CompositeItem composite = (CompositeItem) item;
-                    orderText.append(composite.name).append("\n");
-                    for (Component component : composite.components) {
-                        orderText.append("  - ").append(component.count).append("x ").append(component.name).append("\n");
+    private static void updateOrdersDisplay() {
+        SwingUtilities.invokeLater(() -> {
+            ordersPanel.removeAll();
+            for (Order order : orders) {
+                JPanel orderPanel = new JPanel();
+                orderPanel.setLayout(new BoxLayout(orderPanel, BoxLayout.Y_AXIS));
+                orderPanel.setBorder(BorderFactory.createLineBorder(Color.BLACK, 2));
+                orderPanel.setBackground(Color.LIGHT_GRAY);
+                orderPanel.setPreferredSize(new Dimension(200, 150));
+
+                StringBuilder orderText = new StringBuilder("<html><b>" + order.location + "</b><br>");
+                for (Item item : order.items) {
+                    orderText.append(item.count).append("x ").append(item.name).append("<br>");
+                    if (item.components != null) {
+                        for (Item comp : item.components) {
+                            orderText.append("- ").append(comp.count).append("x ").append(comp.name).append("<br>");
+                        }
                     }
-                } else if (item instanceof NormalItem) {
-                    NormalItem normal = (NormalItem) item;
-                    orderText.append("1x ").append(normal.name).append("\n");
                 }
+                orderText.append("</html>");
+
+                JLabel orderLabel = new JLabel(orderText.toString());
+                orderPanel.add(orderLabel);
+
+                orderPanel.addMouseListener(new MouseAdapter() {
+                    @Override
+                    public void mouseClicked(MouseEvent e) {
+                        if (e.getClickCount() == 2) {
+                            orders.remove(order);
+                            updateOrdersDisplay();
+                        }
+                    }
+                });
+
+                ordersPanel.add(orderPanel);
             }
-            Label orderLabel = new Label(orderText.toString());
-            orderLabel.setFont(new Font(24));
-            orderLabel.setTextFill(Color.WHITE);
-            orderBox.getChildren().add(orderLabel);
-            orderBox.prefWidthProperty().bind(ordersBox.widthProperty());
-
-            orderBox.setOnMouseClicked(event -> {
-                if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2) {
-                    orders.remove(order);
-                    updateOrdersDisplay();
-                }
-            });
-
-            ordersBox.getChildren().add(orderBox);
-        }
+            ordersPanel.revalidate();
+            ordersPanel.repaint();
+        });
     }
 
     private static void startServer() {
         try {
-            HttpServer server = HttpServer.create(new InetSocketAddress(9000), 0);
+            HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
             server.createContext("/order", new OrderHandler());
             server.setExecutor(null);
             server.start();
-            System.out.println("Server started on port 9000");
+            System.out.println("Server started on port 8080");
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -134,9 +126,13 @@ public class KDS extends Application {
         public void handle(HttpExchange exchange) throws IOException {
             if ("POST".equals(exchange.getRequestMethod())) {
                 String requestBody = new String(exchange.getRequestBody().readAllBytes());
-                KDS app = new KDS();
-                app.loadOrdersFromJson(requestBody);
-                exchange.sendResponseHeaders(200, 0);
+                loadOrdersFromJson(requestBody);
+
+                String response = "{\"status\": \"OK\"}";
+                exchange.sendResponseHeaders(200, response.length());
+                OutputStream os = exchange.getResponseBody();
+                os.write(response.getBytes());
+                os.close();
             } else {
                 exchange.sendResponseHeaders(405, -1);
             }
@@ -153,31 +149,14 @@ public class KDS extends Application {
         }
     }
 
-    private interface Item {}
-
-    private static class NormalItem implements Item {
+    private static class Item {
         String name;
-        NormalItem(String name) {
+        int count;
+        List<Item> components;
+        Item(String name, int count, List<Item> components) {
             this.name = name;
-        }
-    }
-
-    private static class CompositeItem implements Item {
-        String name;
-        List<Component> components;
-        CompositeItem(String name, List<Component> components) {
-            this.name = name;
+            this.count = count;
             this.components = components;
         }
     }
-
-    private static class Component {
-        int count;
-        String name;
-        Component(int count, String name) {
-            this.count = count;
-            this.name = name;
-        }
-    }
 }
-

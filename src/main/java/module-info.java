@@ -1,6 +1,6 @@
 module cz.adam.kds {
-    requires javafx.controls;
     requires com.google.gson;
     requires jdk.httpserver;
+    requires java.desktop;
     exports cz.adam.kds;
 }
